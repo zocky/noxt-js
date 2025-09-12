@@ -1,6 +1,6 @@
 {
   "name": "noxt-server",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Server for noxt-js-middleware with CLI and config support",
   "type": "module",
   "main": "index.js",

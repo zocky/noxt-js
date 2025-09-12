@@ -115,4 +115,4 @@ export default function HelloPage({ name }) {
 
 ## License
 
-MIT © 2025 [Your Name]  
+LGPL-3.0-or-later

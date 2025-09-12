@@ -10,6 +10,6 @@ eventSource.addEventListener('connected', () => {
 
 });
 eventSource.addEventListener('reload', () => {
-    console.log('%c Restarting... ','color: #ffd; background-color: #080');
+  console.log('%c Restarting... ','color: #ffd; background-color: #080');
   reload = true;
 });

@@ -1,0 +1,36 @@
+{
+  "name": "noxt-js",
+  "version": "0.1.0",
+  "description": "Server for noxt-js-middleware with CLI and config support",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "noxt-js": "./bin/noxt-js"
+  },
+  "repository": "https://github.com/zocky/noxt-js",
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "express",
+    "jsx",
+    "noxt",
+    "server",
+    "ssr",
+    "async",
+    "cli"
+  ],
+  "author": "Zoran Obradović [https://github.com/zocky]",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "express": "^5.0.0",
+    "js-yaml": "^4.1.0",
+    "minimist": "^1.2.8",
+    "noxt-js-middleware": "^1.0.0",
+    "cookie-parser": "^1.4.6",
+    "morgan": "^1.10.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

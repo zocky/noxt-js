@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+import fs from 'fs';
+import path from 'path';
+import minimist from 'minimist';
+import yaml from 'js-yaml';
+import { startServer } from '../index.js';
+
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const validators = {
+  port: (val) => Number.isInteger(val) && val > 0 && val < 65536 ? + val : new Error('Port must be an integer between 1 and 65535'),
+  host: (val) => typeof val === 'string' && val.length > 0 ? val : new Error('Host must be a non-empty string'),
+  views: (val) => {
+    val = [].concat(val); // ensure array
+    for (const dir of val) {
+      if (typeof dir !== 'string' || dir.length === 0 || !fs.existsSync(path.resolve(process.cwd(), dir))) {
+        return new Error(`Each views directory must be a valid directory path. Invalid: ${dir}`);
+      }
+      return val;
+    }
+  },
+  static: (val) => {
+    if (!val) return val; // allow empty
+    val = [].concat(val); // ensure array
+    for (const dir of val) {
+      if (typeof dir !== 'string' || dir.length === 0 || !fs.existsSync(path.resolve(process.cwd(), dir))) {
+        return new Error(`Each static directory must be a valid directory path. Invalid: ${dir}`);
+      }
+      return val;
+    }
+  },
+  logLevel: (val) => ['error', 'warn', 'info', 'debug'].includes(val) ? val : new Error('Log level must be one of: error, warn, info, debug'),
+  ssl: (val) => {
+    // either boolean false, or object with cert and key and any other options for https.createServer
+    if (val === false) return val;
+    if (typeof val === 'object' && val !== null && typeof val.cert === 'string' && val.cert.length > 0 && typeof val.key === 'string' && val.key.length > 0) {
+      // check if files exist
+      if (!fs.existsSync(path.resolve(process.cwd(), val.cert))) return new Error('SSL certificate file does not exist');
+      if (!fs.existsSync(path.resolve(process.cwd(), val.key))) return new Error('SSL key file does not exist');
+      return val;
+    }
+    return new Error('SSL must be a boolean false, or an object with cert and key');
+  },
+  logFile: (val) => (!val || typeof val === 'string' && val.length > 0) ? val : new Error('Log file must be a non-empty string'),
+  context: async (val) => {
+    // import a list of modules, and return an object with their exports
+    if (!val) return []; // allow empty
+    val = [].concat(val); // ensure array
+    const ctx = {};
+    for (const mod of val) {
+      console.log(`Importing context module: ${mod}`);
+      if (typeof mod !== 'string' || mod.length === 0 || !fs.existsSync(path.resolve(process.cwd(), mod))) {
+        return new Error(`Each context module must be a valid module path. Invalid: ${mod}`);
+      }
+      // import module
+      const modPath = path.resolve(process.cwd(), mod);
+      const modExports = await import(modPath);
+      Object.assign(ctx, modExports);
+    }
+    return ctx;
+  },
+}
+
+
+// read deafault config
+let config = yaml.load(fs.readFileSync(path.resolve(__dirname, '../default.config.yaml'), 'utf8'));
+
+// read local config if exists
+const configPath = 'noxt.config.yaml';
+const configFullPath = path.resolve(process.cwd(), configPath);
+if (fs.existsSync(configFullPath)) {
+  console.log(`Using config file: ${configFullPath}`);
+  try {
+    const localConfig = yaml.load(fs.readFileSync(configFullPath, 'utf8'));
+    for (const key in localConfig) {
+      if (!(key in config)) {
+        console.warn(`Unknown config option in config file: ${key}`);
+      } else {
+        config[key] = localConfig[key];
+      }
+    }
+  } catch (e) {
+    console.error(`Error loading config file: ${e.message}`);
+    process.exit(1);
+  }
+} else {
+  // guess some defaults based on common project structure
+  if (fs.existsSync(path.resolve(process.cwd(), 'views'))) {
+    config.views.push('views');
+  } 
+  if (fs.existsSync(path.resolve(process.cwd(), 'pages'))) {
+    config.views.push('pages');
+  } 
+  if (fs.existsSync(path.resolve(process.cwd(), 'templates'))) {
+    config.views.push('templates');
+  } 
+  if (fs.existsSync(path.resolve(process.cwd(), 'public'))) {
+    config.static.push('public');
+  }
+  if (fs.existsSync(path.resolve(process.cwd(), 'static'))) {
+    config.static.push('static');
+  }
+  if (fs.existsSync(path.resolve(process.cwd(), 'app.js'))) {
+    config.context = 'app.js';
+  }
+}
+// override config with command line options
+const options = minimist(process.argv.slice(2), {
+  string: ['views'],   // treat as strings
+  unknown: (arg) => true
+});
+
+for (const key in options) {
+  if (key === '_') continue; // ignore non-keyed args
+  if (!(key in config)) {
+    console.warn(`Unknown config option: ${key}`);
+    continue;
+  }
+  config[key] = options[key] ?? config[key];
+}
+
+// validate config
+for (const key in config) {
+  if (validators[key]) {
+    const result = await validators[key](config[key]);
+    if (result instanceof Error) {
+      console.error(`Invalid config option "${key}": ${result.message}`);
+      process.exit(1);
+    } else {
+      if (result !== undefined) config[key] = result;
+    }
+  }
+}
+
+console.log('Final config:', config)
+
+startServer(config).catch(err => {
+  console.error(`Error starting server: ${err.message}`);
+  console.log(err.stack);
+  process.exit(1);
+});

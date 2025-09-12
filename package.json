@@ -1,11 +1,11 @@
 {
-  "name": "noxt-js",
+  "name": "noxt-server",
   "version": "0.1.0",
   "description": "Server for noxt-js-middleware with CLI and config support",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "noxt-js": "./bin/noxt-js"
+    "noxt-server": "./bin/noxt-server"
   },
   "repository": "https://github.com/zocky/noxt-js",
   "scripts": {
@@ -23,13 +23,22 @@
   "author": "Zoran Obradović [https://github.com/zocky]",
   "license": "GPL-3.0-or-later",
   "peerDependencies": {
+    "cookie-parser": "^1.4.6",
     "express": "^5.0.0",
     "js-yaml": "^4.1.0",
     "minimist": "^1.2.8",
-    "noxt-js-middleware": "^1.0.0",
-    "cookie-parser": "^1.4.6",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "noxt-js-middleware": "^1.0.0"
   },
+  "devDependencies": {
+    "cookie-parser": "^1.4.6",
+    "express": "^5.0.0",
+    "js-yaml": "^4.1.0",
+    "minimist": "^1.2.8",
+    "morgan": "^1.10.0",
+    "noxt-js-middleware": "file:../noxt-js-middleware"
+  },
+  
   "engines": {
     "node": ">=18"
   }

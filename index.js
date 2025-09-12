@@ -7,6 +7,9 @@ import noxt from 'noxt-js-middleware';
 import { readFileSync } from 'fs';
 import { createServer } from 'https';
 import reloadServer from './reload_server.js';
+import { processConfig } from './config.js';
+export { registerConfigHandler } from './config.js';
+export { registerPageExportHandler } from 'noxt-js-middleware';
 
 /**
  * Starts a Noxt server based on a fully resolved config object.
@@ -20,6 +23,16 @@ import reloadServer from './reload_server.js';
  * @returns {Promise<{app: express.Application, server: import('http').Server|import('https').Server}>}
  */
 export async function startServer (config) {
+  // Load context
+  const context = {};
+  config = await processConfig(config, false);
+  for (const mod of [].concat(config.context).flat(Infinity).filter(Boolean)) {
+    Object.assign(context, await import(resolve(mod)));
+  }
+  config = context.config = await processConfig(config,true);
+  console.log('Final config:', config);
+  await context.init?.(context);
+  
   const app = express();
 
   // Basic middleware
@@ -38,10 +51,12 @@ export async function startServer (config) {
     app.use(serve_static(resolve(dir)));
   }
 
+
+
   // Mount the Noxt router
   const router = await noxt({
     directory: config.views,
-    context: config.context,
+    context: context,
     layout: config.layout,
   });
   app.use(router);

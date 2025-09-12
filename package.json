@@ -22,7 +22,7 @@
   ],
   "author": "Zoran Obradović [https://github.com/zocky]",
   "license": "GPL-3.0-or-later",
-  "dependencies": {
+  "peerDependencies": {
     "express": "^5.0.0",
     "js-yaml": "^4.1.0",
     "minimist": "^1.2.8",

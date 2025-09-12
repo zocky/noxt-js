@@ -36,7 +36,7 @@
     "js-yaml": "^4.1.0",
     "minimist": "^1.2.8",
     "morgan": "^1.10.0",
-    "noxt-js-middleware": "^1.0.2"
+    "noxt-js-middleware": "^1.0.3"
   },
   "engines": {
     "node": ">=18"

@@ -27,6 +27,7 @@ export async function startServer (config) {
   const context = {};
   config = await processConfig(config, false);
   for (const mod of [].concat(config.context).flat(Infinity).filter(Boolean)) {
+    console.log(`Importing context module: ${mod}`);
     Object.assign(context, await import(resolve(mod)));
   }
   config = context.config = await processConfig(config,true);

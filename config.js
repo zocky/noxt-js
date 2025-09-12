@@ -41,7 +41,6 @@ export const handlers = {
     if (!val) return []; // allow empty
     val = [].concat(val); // ensure array
     for (const mod of val) {
-      console.log(`Importing context module: ${mod}`);
       if (typeof mod !== 'string' || mod.length === 0 || !fs.existsSync(path.resolve(process.cwd(), mod))) {
         return new Error(`Each context module must be a valid module path. Invalid: ${mod}`);
       }

@@ -16,14 +16,20 @@ export async function startServer({ config, recipe }) {
         : `${__dirname}/units/${name}.js`
   });
   try {
+
     const report = await mlmInstance.analyze(recipe ?? 'noxt-dev');
     if (!report.success) {
-      console.log(report.order.join(', '));
+      console.log('Bad recipe: ' + recipe + '\n' + report.order.join(', '));
+      console.log(report.errors.join('\n'));
       process.exit(1);
     }
     
     await mlmInstance.install(recipe ?? 'noxt-dev');
-    await mlmInstance.start(config);
+    const mlm = mlmInstance.context;
+    await mlm.services.config.merge(config);
+    console.log(mlm.config);
+    await mlmInstance.start();
+
   } catch (e) {
     console.log(await mlmInstance.analyze(recipe ?? 'noxt-dev'));
     console.error(e);

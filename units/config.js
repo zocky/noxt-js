@@ -10,34 +10,47 @@ const config_defaults = {};
 const config_defs = {}
 
 function merge_deep(target, ...sources) {
-  if (!sources.length) return target;
-  
-  const source = sources.shift();
-  
-  if (is_plain(target) && is_plain(source)) {
-    for (const key in source) {
-      if (source.hasOwnProperty(key)) {
-        // If target doesn't have this key, simply assign
-        if (!target.hasOwnProperty(key)) {
-          target[key] = source[key];
-        } 
-        // If both target and source have this key and both are plain objects, recurse
-        else if (is_plain(target[key]) && is_plain(source[key])) {
-          merge_deep(target[key], source[key]);
-        }
-        // If target has a non-plain object value, ignore (don't overwrite or try to merge into it)
-        // else: do nothing (keep target's existing value)
-      }
+    // If no sources, return target
+    if (sources.length === 0) return target;
+    
+    // If target is not a plain object, return the first source (overwrite)
+    if (!isPlainObject(target)) {
+        return sources[0];
     }
-  }
-  
-  return merge_deep(target, ...sources);
+    
+    const result = Object.assign({}, target);
+    
+    for (const source of sources) {
+        // If source is not a plain object, skip (treat as scalar)
+        if (!isPlainObject(source)) {
+            continue;
+        }
+        
+        for (const [key, sourceValue] of Object.entries(source)) {
+            const targetValue = result[key];
+            
+            // If both values are plain objects, merge recursively
+            if (isPlainObject(targetValue) && isPlainObject(sourceValue)) {
+                result[key] = merge_deep(targetValue, sourceValue);
+            } 
+            // Otherwise, overwrite target with source value
+            else {
+                result[key] = sourceValue;
+            }
+        }
+    }
+    
+    return result;
 }
 
-function is_plain(obj) {
-  return obj !== null && 
-         typeof obj === 'object' && 
-         (obj.constructor === Object || obj.constructor === null);
+// Helper function to check if value is a plain object
+function isPlainObject(value) {
+    if (value === null || typeof value !== 'object') {
+        return false;
+    }
+    
+    const proto = Object.getPrototypeOf(value);
+    return proto === null || proto === Object.prototype;
 }
 
 export default mlm => ({
@@ -48,13 +61,15 @@ export default mlm => ({
       mlm.assert.not(key in config_defs, 'Duplicate config key ' + key);
       mlm.assert.is({
         is: 'any|none',
-        default: 'any|none'
+        default: 'any|none',
+        normalize: 'function|none'
       }, def, `config.${key}`);
 
       if ('default' in def) {
         config_defaults[key] = mlm.utils.eval(def.default);
       }
       config_defs[key] = {
+        normalize: def.normalize,
         is: def.is,
         default: def.default,
         unit: unit
@@ -67,13 +82,22 @@ export default mlm => ({
       const merged = merge_deep({}, config_defaults, config);
       const ret = {};
       for (const key in config_defs) {
-        const { is: type } = config_defs[key];
+        const { is: type, normalize } = config_defs[key];
         if (key in merged) {
+          if (normalize) {
+            merged[key] = normalize(merged[key]);
+          }
+
           mlm.assert.is(type, merged[key], `config.${key}`);
           ret[key] = merged[key];
         }
       }
       return ret;
+    }
+    merge(config) {
+      mlm.log('config', config,mlm.config);
+      Object.assign(mlm.config, this.process(config));
+      
     }
     get_defs() {
       return {
@@ -83,7 +107,4 @@ export default mlm => ({
       };
     }
   },
-  onStart(config) {
-    Object.assign(mlm.config, mlm.services.config.process(config));
-  }
 })

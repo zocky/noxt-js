@@ -48,10 +48,6 @@ export default mlm => ({
   async onStart() {
     const { default: express } = await mlm.import('express');
     app = express();
-    app.use((req, res, next) => {
-      mlm.log(req.method, req.url);
-      next();
-    })
     for (const middleware of middlewares) {
       const mw = await middleware.create(app);
       if (middleware.path) {

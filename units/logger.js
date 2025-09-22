@@ -8,7 +8,7 @@ export const info = {
 export default mlm => ({
   'middleware.logger': async (app) => {
      return (req, res, next) => {
-        console.log(req.method, req.url);
+        mlm.log(req.method, req.url);
         next();
      }
   },

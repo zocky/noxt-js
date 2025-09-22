@@ -10,6 +10,7 @@ export const info = {
 
 export default mlm => ({
   'config.views': {
+    normalize: p => [p].flat(),
     is: ['string'],
     default: ['views']
   },

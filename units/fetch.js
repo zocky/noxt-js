@@ -8,7 +8,7 @@ export default mlm => ({
   'componentExports.fetch': async ({exported, props, ctx}) => {
     for (const id in exported) {
       let url = await mlm.utils.eval(exported[id], props, ctx);
-      mlm.log('fetching', id, url);
+     // mlm.log('fetching', id, url);
       try {
         const now = performance.now();
         const res = await ctx.fetch(url);

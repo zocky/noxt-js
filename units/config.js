@@ -5,6 +5,7 @@ export const info = {
   requires: ['utils','services'],
 }
 
+const config = {};
 const config_is = {};
 const config_defaults = {};
 const config_defs = {}
@@ -54,7 +55,11 @@ function isPlainObject(value) {
 }
 
 export default mlm => ({
-  'define.config': () => ({}),
+  'define.config': {
+    get: () => config,
+    enumerable: true,
+    configurable: false
+  },
   'register.config': (defs, unit) => {
     for (const key in defs) {
       const def = defs[key];
@@ -78,8 +83,8 @@ export default mlm => ({
   },
   'utils.merge_deep': merge_deep,
   'services.config': () => new class ConfigService {
-    process(config) {
-      const merged = merge_deep({}, config_defaults, config);
+    process(userConfig) {
+      const merged = merge_deep({}, config_defaults, userConfig);
       const ret = {};
       for (const key in config_defs) {
         const { is: type, normalize } = config_defs[key];
@@ -94,10 +99,10 @@ export default mlm => ({
       }
       return ret;
     }
-    merge(config) {
-      mlm.log('config', config,mlm.config);
-      Object.assign(mlm.config, this.process(config));
-      
+    merge(userConfig) {
+      console.log('initial',config_defaults)
+      Object.assign(config, this.process(userConfig));
+      console.log(userConfig,'final',config)
     }
     get_defs() {
       return {

@@ -56,6 +56,8 @@ export default mlm => ({
         app.use(mw);
       }
     }
-    app.listen(mlm.config.port, mlm.config.host);
+    app.listen(mlm.config.port, mlm.config.host, () => {
+      mlm.log(`Listening on ${mlm.config.host}:${mlm.config.port}`);
+    });
   },
 })

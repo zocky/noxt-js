@@ -11,19 +11,6 @@ export default mlm => ({
   requires: ['noxt-plugin'],
   provides: ['#fetch'],
   description: 'Native fetch',
-  'config.fetch': {
-    is: {
-      ttl: 'integer|none',
-      retry: 'positiveInteger|none',
-      timeout: 'positiveInteger|none'
-    },
-    default: {
-      ttl: 60 * 60 * 1000,
-      retry: 2,
-      timeout: 5000
-    }
-  },
-
   'serverContext.fetch': () => fetchOrThrow,
 });
 

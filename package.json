@@ -1,6 +1,6 @@
 {
   "name": "noxt-server",
-  "version": "0.1.7",
+  "version": "0.1.13",
   "description": "Server for noxt-js-middleware with CLI and config support",
   "type": "module",
   "main": "noxt-server.js",
@@ -23,8 +23,8 @@
   "author": "Zoran Obradović [https://github.com/zocky]",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "noxt-js-middleware": "^1.0.5",
-    "mlm-core": "^1.0.5",
+    "noxt-js-middleware": "^1.0.6",
+    "mlm-core": "^1.0.6",
     "express": "^5.0.0",
     "cookie-parser": "^1.4.6",
     "js-yaml": "^4.1.0",

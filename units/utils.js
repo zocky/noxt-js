@@ -7,16 +7,16 @@ export const info = {
 export default mlm => {
 
   const utils = {};
-  utils.eval = (fn,...args) => typeof fn === 'function' ? fn(...args) : fn;
+  utils.eval = (fn, ...args) => typeof fn === 'function' ? fn(...args) : fn;
   utils.readOnly = (obj, { label = 'object' } = {}) => new Proxy(obj, {
     get: (t, k) => t[k],
     set: (t, k, v) => { mlm.throw(label + ' is read-only'); }
   });
-  utils.collector = (target, { 
-    map, is, filter, 
-    label = 'object', 
-    mode = 'object', 
-    override = false 
+  utils.collector = (target, {
+    map, is, filter,
+    label = 'object',
+    mode = 'object',
+    override = false
   } = {}) => {
     const modes = {
       array: () => source => {
@@ -34,7 +34,7 @@ export default mlm => {
           }
           let value = source[key];
           if (filter && !filter(value, key)) continue;
-          if (is) mlm.assert.is( is,value, label + '.' + key);
+          if (is) mlm.assert.is(is, value, label + '.' + key);
           if (map) value = map(value, key);
           target[key] = value;
         }
@@ -73,6 +73,6 @@ export default mlm => {
   }
   return ({
     'define.utils': () => utils.readOnly(utils, 'utils'),
-    'register.utils': utils.collector(utils, { is: 'function', mode: 'object' }),
+    'register.utils': utils.collector(utils, { is: 'function', mode: 'object', map: (fn, key) => { mlm.log('utils', key); return fn; } }),
   })
 }

@@ -28,8 +28,9 @@ export async function startServer({ config, recipe }) {
     const mlm = mlmInstance.context;
     await mlm.services.config.merge(config);
     console.log(mlm.config);
-    await mlmInstance.start();
+    mlmInstance.start();
 
+    mlmInstance.repl();
   } catch (e) {
     console.log(await mlmInstance.analyze(recipe ?? 'noxt-dev'));
     console.error(e);

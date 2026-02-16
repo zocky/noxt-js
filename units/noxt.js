@@ -5,7 +5,9 @@ export const info = {
   requires: [
     'express', 
     'logger',
+    'compression',
     'static', 
+    'bundler',
     'noxt-router',
     'fetch-cache-fs', 
     'fetch',

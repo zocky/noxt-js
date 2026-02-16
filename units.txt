@@ -1,0 +1,815 @@
+=== ./fetch.js ===
+export const info = {
+  version: '1.0.0',
+  description: 'Preload props from urls',
+  requires: ['noxt-plugin','#fetch'],
+}
+
+export default mlm => ({
+  'componentExports.fetch': async ({exported, props, ctx}) => {
+    for (const id in exported) {
+      let url = await mlm.utils.eval(exported[id], props, ctx);
+     // mlm.log('fetching', id, url);
+      try {
+        const now = performance.now();
+        const res = await ctx.fetch(url);
+        mlm.log('fetched', id, url, (performance.now() - now).toFixed(3) +'ms');
+        props[id] = await res.json();
+        //mlm.log('fetched', url, JSON.stringify(props[id]).length);
+      } catch (e) {
+        if (process.env.NODE_ENV !== 'production') {
+          mlm.throw(new Error('error fetching ' + url + ': ' + e));
+        }
+        mlm.error('fetch', url, e);
+        props[id] = null;
+      }
+    }
+  },
+})=== ./config.js ===
+export const info = {
+  name: 'config',
+  version: '1.0.0',
+  description: 'Config ',
+  requires: ['utils','services'],
+}
+
+const config = {};
+const config_is = {};
+const config_defaults = {};
+const config_defs = {}
+
+function merge_deep(target, ...sources) {
+    // If no sources, return target
+    if (sources.length === 0) return target;
+    
+    // If target is not a plain object, return the first source (overwrite)
+    if (!isPlainObject(target)) {
+        return sources[0];
+    }
+    
+    const result = Object.assign({}, target);
+    
+    for (const source of sources) {
+        // If source is not a plain object, skip (treat as scalar)
+        if (!isPlainObject(source)) {
+            continue;
+        }
+        
+        for (const [key, sourceValue] of Object.entries(source)) {
+            const targetValue = result[key];
+            
+            // If both values are plain objects, merge recursively
+            if (isPlainObject(targetValue) && isPlainObject(sourceValue)) {
+                result[key] = merge_deep(targetValue, sourceValue);
+            } 
+            // Otherwise, overwrite target with source value
+            else {
+                result[key] = sourceValue;
+            }
+        }
+    }
+    
+    return result;
+}
+
+// Helper function to check if value is a plain object
+function isPlainObject(value) {
+    if (value === null || typeof value !== 'object') {
+        return false;
+    }
+    
+    const proto = Object.getPrototypeOf(value);
+    return proto === null || proto === Object.prototype;
+}
+
+export default mlm => ({
+  'define.config': {
+    get: () => config,
+    enumerable: true,
+    configurable: false
+  },
+  'register.config': (defs, unit) => {
+    for (const key in defs) {
+      const def = defs[key];
+      mlm.assert.not(key in config_defs, 'Duplicate config key ' + key);
+      mlm.assert.is({
+        is: 'any|none',
+        default: 'any|none',
+        normalize: 'function|none'
+      }, def, `config.${key}`);
+
+      if ('default' in def) {
+        config_defaults[key] = mlm.utils.eval(def.default);
+      }
+      config_defs[key] = {
+        normalize: def.normalize,
+        is: def.is,
+        default: def.default,
+        unit: unit
+      };
+    }
+  },
+  'utils.merge_deep': merge_deep,
+  'services.config': () => new class ConfigService {
+    process(userConfig) {
+      const merged = merge_deep({}, config_defaults, userConfig);
+      const ret = {};
+      for (const key in config_defs) {
+        const { is: type, normalize } = config_defs[key];
+        if (key in merged) {
+          if (normalize) {
+            merged[key] = normalize(merged[key]);
+          }
+
+          mlm.assert.is(type, merged[key], `config.${key}`);
+          ret[key] = merged[key];
+        }
+      }
+      return ret;
+    }
+    merge(userConfig) {
+      console.log('initial',config_defaults,userConfig)
+      Object.assign(config, this.process(userConfig));
+      console.log(userConfig,'final',config)
+    }
+    get_defs() {
+      return {
+        config_defs,
+        config_is,
+        config_defaults
+      };
+    }
+  },
+})=== ./fetch-cache.js ===
+export const info = {
+  name: 'fetch-cache',
+  version: '1.0.0',
+  requires: ['noxt-plugin'],
+  provides: ['#fetch'],
+  description: 'Cached fetch',
+  npm: {
+    'node-fetch-cache': '^1.0.0',
+  },
+}
+
+let fetchCache = null;
+
+export default mlm => ({
+  'config.fetch': {
+    is: {
+      ttl: 'integer|none',
+      retry: 'positiveInteger|none',
+      timeout: 'positiveInteger|none'
+    },
+    default: {
+      ttl: 60 * 60 * 1000,
+      retry: 2,
+      timeout: 5000
+    }
+  },
+
+  'pageContext.fetch': (props, ctx) => globalFetch.bind(null, ctx),
+  'serverContext.fetch': () => globalFetch,
+
+  async onStart() {
+    const { default: nodeFetchCache } = await mlm.import('node-fetch-cache');
+    const cfg = mlm.config.fetch;
+    fetchCache = await nodeFetchCache.create({
+      cache: undefined,
+      ttl: cfg.ttl,
+      retry: cfg.retry,
+      timeout: cfg.timeout
+    });
+  }
+});
+
+async function globalFetch(ctx, url, options = {}) {
+  if (ctx.req.headers.pragma === 'no-cache') options.cache = 'no-cache';
+  const res = await fetchCache(url, options);
+  if (!res.ok) throw new Error(res.statusText);
+  return res;
+}=== ./services.js ===
+export const info = {
+  name: 'services',
+  version: '1.0.0',
+  description: 'Services',
+  requires: ['utils']
+}
+
+const services = {}
+
+export default mlm => ({
+  'define.services': () => mlm.utils.readOnly(services, 'services'),
+  'register.services': mlm.utils.collector(services, {
+    is: 'function',
+    mode: 'object',
+    map: (fn, key) => {
+      const service = fn(mlm)
+      mlm.assert.is.object(service, 'service');
+      return service
+    }
+  }),
+})=== ./noxt.js ===
+export const info = {
+  name: 'noxt',
+  version: '1.0.0',
+  description: 'Noxt server',
+  requires: [
+    'express', 
+    'logger',
+    'static', 
+    'noxt-router',
+    'fetch-cache-fs', 
+    'fetch',
+  ],
+}=== ./utils.js ===
+export const info = {
+  name: 'utils',
+  version: '1.0.0',
+  description: 'Utils',
+  //requires: ['env']
+}
+export default mlm => {
+
+  const utils = {};
+  utils.eval = (fn, ...args) => typeof fn === 'function' ? fn(...args) : fn;
+  utils.readOnly = (obj, { label = 'object' } = {}) => new Proxy(obj, {
+    get: (t, k) => t[k],
+    set: (t, k, v) => { mlm.throw(label + ' is read-only'); }
+  });
+  utils.collector = (target, {
+    map, is, filter,
+    label = 'object',
+    mode = 'object',
+    override = false
+  } = {}) => {
+    const modes = {
+      array: () => source => {
+        for (let value of source) {
+          if (filter && !filter(value)) continue;
+          if (is) mlm.assert.is(is, value, label);
+          if (map) value = map(value);
+          target.push(value);
+        }
+      },
+      object: () => source => {
+        for (const key in source) {
+          if (!override && key in target) {
+            mlm.throw('Duplicate key' + key + ' in ' + label);
+          }
+          let value = source[key];
+          if (filter && !filter(value, key)) continue;
+          if (is) mlm.assert.is(is, value, label + '.' + key);
+          if (map) value = map(value, key);
+          target[key] = value;
+        }
+      },
+      arrays: () => source => {
+        for (const key in source) {
+          let values = [source[key]].flat(Infinity);
+          target[key] ??= [];
+          for (let value of values) {
+            if (filter && !filter(value, key)) continue;
+            if (is) mlm.assert.is(is, value, label + '.' + key);
+            if (map) value = map(value, key);
+            target[key].push(value);
+          }
+        }
+      },
+      directory: () => source => {
+        for (const key in source) {
+          let values = source[key];
+          target[key] ??= {};
+          for (const id in values) {
+            if (!override && id in target[key]) {
+              mlm.throw('Duplicate key' + id + ' in ' + label + '.' + key);
+            }
+            let value = values[id];
+            if (filter && !filter(value, key)) continue;
+            if (is) mlm.assert.is(is, value, label + '.' + key);
+            if (map) value = map(value, key);
+            target[key][id] = value;
+          }
+        }
+      }
+    }
+    mlm.assert(mode in modes, 'Unknown mode ' + mode);
+    return modes[mode]();
+  }
+  return ({
+    'define.utils': () => utils.readOnly(utils, 'utils'),
+    'register.utils': utils.collector(utils, { is: 'function', mode: 'object', map: (fn, key) => { mlm.log('utils', key); return fn; } }),
+  })
+}=== ./fetch-node.js ===
+export const info = {
+  name: 'fetch-node',
+  version: '1.0.0',
+  description: 'Native fetch',
+  requires: ['noxt-plugin'],
+  provides: ['#fetch'],
+}
+
+export default mlm => ({
+  name: 'fetch-node',
+  requires: ['noxt-plugin'],
+  provides: ['#fetch'],
+  description: 'Native fetch',
+  'serverContext.fetch': () => fetchOrThrow,
+});
+
+async function fetchOrThrow(ctx, url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error(res.statusText);
+  return res;
+}=== ./plugin.js ===
+export const info = {
+  name: 'plugin',
+  version: '1.0.0',
+  description: 'Base',
+  requires: ['env','utils','services','hooks','config']
+}=== ./reload.js ===
+export const info = {
+  name: 'reload',
+  description: 'Hot reload middleware',
+  requires: ['noxt-plugin'],
+  npm: {
+    'express': '^5.0.0',
+  },
+}
+
+const clients = new Set();
+export default mlm => ({
+  'pageContext.reload': ({ ctx }) => ctx.slot('script', 'noxt-reload', '/_reload.js'),
+  'middleware.reload': async () => {
+    const { default: express } = await mlm.import('express');
+    const router = express.Router();
+    router.get('/_reload.js', (req, res) => {
+      res.set('Content-Type', 'text/javascript');
+      res.send(reloadJs);
+    });
+
+    router.get('/_events', (req, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'content-encoding': 'none'
+      });
+      res.write('\nevent:connected\ndata:\n\n');
+      clients.add(res);
+      res.on('close', () => {
+        clients.delete(res);
+        res.end();
+      })
+      req.on('error', () => clients.delete(res));
+      res.on('error', () => clients.delete(res));
+    });
+
+    return router
+  },
+  onStart() {
+    process.on('SIGUSR2', handleSignal)
+  },
+  onStop() {
+    process.removeListener('SIGUSR2', handleSignal)
+  }
+})
+
+async function handleSignal() {
+  const promises = Array.from(clients).map(async client => {
+    client.write('event: reload\ndata:\n\n');
+    return new Promise(resolve => client.end(resolve));
+  });
+  await Promise.all(promises);
+  process.exit(0);
+};
+
+const reloadJs = `
+  const eventSource = new EventSource('/_events');
+let reload = false;
+eventSource.addEventListener('connected', () => {
+  if (reload) {
+    console.log('%c NOXT ','color: #ffd; background-color: #080', 'Reloading...' );
+    window.location.reload();
+  } else {
+    console.log('%c NOXT ', 'color: #ffd; background-color: #080', 'Connected.' );
+  }
+
+});
+eventSource.addEventListener('reload', () => {
+  console.log('%c NOXT ','color: #ffd; background-color: #080', 'Restarting...' );
+  reload = true;
+});
+window.addEventListener('beforeunload', () => {
+  eventSource.close();
+});
+`=== ./logger.js ===
+export const info = {
+  name: 'logger',
+  version: '1.0.1',
+  description: 'Noxt logger',
+  requires: ['express'],
+}
+
+export default mlm => ({
+  'middleware.logger': async () => (req, res, next) => {
+    const start = process.hrtime.bigint();
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+    const ua = req.headers['user-agent'] || '-';
+    res.on('finish', () => {
+      const dur = Number(process.hrtime.bigint() - start) / 1e6; // ms
+      const date = new Date().toISOString();
+      mlm.log(
+        `[${date}] ${ip} ${req.method} ${req.originalUrl || req.url} ` +
+        `| HTTP/${req.httpVersion} | ${res.statusCode} | ${ua} | ${dur.toFixed(2)}ms `
+      );
+    });
+    next();
+  },
+});
+=== ./express.js ===
+export const info = {
+  name: 'express',
+  description: 'Sets up an Express server',
+  requires: ['plugin'],
+  npm: {
+    'express': '^5.0.0',
+    'cookie-parser': '^1.4.6'
+  },
+}
+
+let app;
+const middlewareNames = new Set();
+const middlewares = [];
+export default mlm => ({
+  'define.express': { get: () => app },
+  'register.middleware': (conf, unit) => {
+    for (const key in conf) {
+      mlm.assert.not(key in middlewareNames, 'Duplicate middleware ' + key);
+      middlewareNames.add(key);
+      let c = conf[key];
+      if (mlm.is.function(c)) {
+        c = { create: c };
+      }
+      mlm.assert.is({
+        path: 'string|none',
+        create: 'function'
+      }, c, 'middleware');
+      mlm.assert.is.function(c.create, 'middleware');
+      middlewares.push({ ...c, unit: unit.name });
+    }
+  },
+  'config.port': {
+    is: v => Number.isInteger(v) && v > 0 && v < 65536,
+    default: 3000
+  },
+  'config.host': {
+    is: 'string',
+    default: 'localhost'
+  },
+  'middleware.json': async (app) => {
+    const { default: express } = await mlm.import('express');
+    return express.json();
+  },
+  'middleware.urlencoded': async (app) => {
+    const { default: express } = await mlm.import('express');
+    return express.urlencoded({ extended: true });
+  },
+  async onStart() {
+    const { default: express } = await mlm.import('express');
+    app = express();
+    for (const middleware of middlewares) {
+      const mw = await middleware.create(app);
+      if (middleware.path) {
+        app.use(middleware.path, mw);
+      } else {
+        app.use(mw);
+      }
+    }
+    app.listen(mlm.config.port, mlm.config.host, (error) => {
+      if (error) {
+        mlm.throw(error);
+      }
+      mlm.log(`Listening on ${mlm.config.host}:${mlm.config.port}`);
+    });
+    app.on('close', () => {
+      mlm.log('Server closed');
+    });
+    app.on('error', (error) => {
+      mlm.throw(error);
+    });
+  },
+})=== ./noxt-dev.js ===
+export const info = {
+  name: 'noxt-dev',
+  description: 'Noxt Dev server',
+  requires: [
+    'express',
+    'logger',
+    'static',
+    'noxt-router-dev',
+    'reload',
+    'fetch-cache-fs',
+    'fetch',
+  ],
+}=== ./fetch-cache-fs.js ===
+export const info = {
+  name: 'fetch-cache-fs',
+  version: '1.0.0',
+  description: 'Cached fetch with filesystem cache',
+  requires: ['noxt-plugin'],
+  provides: ['#fetch'],
+  npm: {
+    'node-fetch-cache': '^1.0.0',
+  },
+}
+
+let fetchCache = null;
+
+export default mlm => ({
+  'config.fetch': {
+    is: {
+      cacheDir: 'string',
+      ttl: 'integer|none',
+      enabled: 'boolean',
+      retry: 'positiveInteger',
+      timeout: 'positiveInteger'
+    },
+    default: {
+      enabled: true,
+      cacheDir: '.cache/fetch-cache',
+      ttl: 60 * 60 * 1000,
+      retry: 2,
+      timeout: 5000
+    },
+  },
+  'pageContext.fetch': ({ ctx }) => globalFetch.bind(null, ctx),
+  'serverContext.fetch': () => globalFetch,
+  'onStart': async () => {
+    const { default: nodeFetchCache, FileSystemCache } = await mlm.import('node-fetch-cache');
+    const cfg = mlm.config.fetch;
+    fetchCache = nodeFetchCache.create({
+      cache: cfg.enabled ? new FileSystemCache({ cacheDirectory: cfg.cacheDir }) : undefined,
+      ttl: cfg.ttl,
+      retry: cfg.retry,
+      timeout: cfg.timeout
+    });
+  }
+});
+
+async function globalFetch(ctx, url, options = {}) {
+  let res = await fetchCache(url, options);
+  if (ctx.req.headers.pragma === 'no-cache' && !res.isCacheMiss) {
+    console.log('reload', url);
+    res.ejectFromCache();
+    res = await fetch(url, options);
+  }
+  if (!res.ok) throw new Error(res.statusText);
+  return res;
+}=== ./noxt-plugin.js ===
+export const info = {
+  name: 'noxt-plugin',
+  description: 'Noxt Plugin',
+  requires: ['express','#noxt-router'],
+}
+
+const pageContextHooks = {};
+const serverContextHooks = {};
+const componentExportsHooks = {};
+const registerPageHooks = {};
+const registerComponentHooks = {};
+
+export default mlm => {
+
+  const collector = (coll, desc) => (conf, unit) => {
+    for (const key in conf) {
+      const fn = conf[key];
+      mlm.assert.is.function(fn, desc);
+      mlm.assert.not(key in coll, 'Duplicate ' + desc + ' ' + key);
+      coll[key] = ({ fn, unit: unit.name });
+    }
+  }
+
+  const runner = (
+    coll, each = (_, fn, ...args) => fn(...args)
+  ) => async (...args) => {
+    for (const key in coll) {
+      const { fn } = coll[key];
+      await each(key, fn, ...args);
+    }
+  }
+
+  const arrayCollector = (coll, desc) => (conf, unit) => {
+    for (const key in conf) {
+      const fn = conf[key];
+      mlm.assert.is.function(fn, desc);
+      coll[key] ??= [];
+      coll[key].push({ fn, unit: unit.name });
+    }
+  }
+
+  const arrayRunner = (
+    coll, each = (_, fn, ...args) => fn(...args)
+  ) => async (...args) => {
+    for (const key in coll) {
+      const handlers = coll[key];
+      for (const handler of handlers) {
+        await each(key, handler.fn, ...args);
+      }
+    }
+  }
+  const globalServerContext = {};
+  return ({
+    'register.pageContext': arrayCollector(pageContextHooks, 'page context handler'),
+    'register.serverContext': arrayCollector(serverContextHooks, 'server context handler'),
+    'register.componentExports': arrayCollector(componentExportsHooks, 'page export handler'),
+    'register.registerPage': collector(registerPageHooks, 'register page handler'),
+    'register.registerComponent': collector(registerComponentHooks, 'register component handler'),
+    'define.noxt_context': {
+      get: () => globalServerContext,
+      enumerable: true
+    },
+    'serverContext.utils': () => mlm.utils,
+    'serverContext.DEV': () => mlm.DEV,
+    'serverContext.PROD': () => mlm.PROD,
+    onStart: async () => {
+      mlm.services.noxt.noxt_context({ ctx: globalServerContext });
+      //mlm.log('ctx', mlm.serverContext);
+    },
+    'services.noxt': () => new class PluginService {
+      noxt_context = arrayRunner(serverContextHooks,
+        async (key, fn, { ctx }) => ctx[key] = await fn({ ctx })
+      );
+
+      noxt_hooks = {
+        beforeRequest: [
+          ({ ctx }) => {
+            Object.assign(ctx, mlm.noxt_context);
+          },
+          arrayRunner(pageContextHooks,
+            async (key, fn, args) => {
+              args.ctx[key] = await fn(args)
+            }
+          ),
+        ],
+        beforeRender: arrayRunner(componentExportsHooks,
+          async (key, fn, { module, props, ctx }) => {
+            //mlm.log('beforeRender', unit, key, Object.keys(props));
+            if (!(key in module)) return;
+            const exported = module[key];
+            await fn({ exported, props, ctx, module })
+            //mlm.log('beforeRender', key, Object.keys(props));
+          }
+        ),
+        registerPage: runner(registerPageHooks,
+          async (key, fn, { module, component }) => {
+            await fn({ module, component })
+          }
+        ),
+        registerComponent: runner(registerComponentHooks,
+          async (key, fn, { module, component }) => {
+            await fn({ module, component })
+          }
+        )
+      }
+
+      report() {
+        return {
+          pageContext: pageContextHooks,
+          serverContext: serverContextHooks,
+          componentExports: componentExportsHooks,
+          registerPage: registerPageHooks,
+          registerComponent: registerComponentHooks
+        }
+      }
+    },
+    'registerPage.Link'({ component, module }) {
+      const As = module.Link ?? 'a';
+      component.Link = ({ text, children, attrs, ...props }, ctx) => {
+        const href = component.getRoutePath(props, ctx);
+        return { type: As, props: { ...attrs, href, children: text ?? children }  };
+      }
+    }
+  })
+}=== ./noxt-router-dev.js ===
+export const info = {
+  name: 'noxt-router-dev',
+  description: 'Sets up a Noxt Router',
+  requires: ['plugin'],
+  provides: ['#noxt-router'],
+  npm: {
+    'noxt-js-middleware': '^1.0.4'
+  },
+}
+
+export default mlm => ({
+  'config.views': {
+    normalize: p => [p].flat(),
+    is: ['string'],
+    default: ['views']
+  },
+  'middleware.noxt': async () => {
+    const { default: noxt } = await mlm.import('noxt-js-middleware');
+    const noxtRouter = await noxt({
+      context: mlm.noxt_context,
+      views: mlm.config.views,
+      hooks: mlm.services.noxt.noxt_hooks
+    })
+    const devRouter = await noxt({
+      context: mlm.noxt_context,
+      views: mlm.config.views,
+      hooks: mlm.services.noxt.noxt_hooks,
+      noxt: noxtRouter
+    })
+    noxtRouter.use('/dev', devRouter)
+    return noxtRouter
+  }
+})=== ./hooks.js ===
+export const info = {
+  name: 'hooks',
+  version: '1.0.0',
+  description: 'Hooks',
+  requires: ['utils','services']
+}
+const hooks = {}
+const hook_handlers = {}
+
+export default mlm => {
+  return ({
+    'define.hooks': () => mlm.utils.readOnly(hooks, 'hooks'),
+    'register.hooks': mlm.utils.collector(hooks, {
+      is: 'function',
+      mode: 'object',
+      map: (fn, key) => (...args) => {
+        for (const handler of hook_handlers[key] ?? []) {
+          fn(handler, ...args);
+        }
+      }
+    }),
+    'register.on': mlm.utils.collector(hook_handlers, {
+      is: 'function',
+      mode: 'array'
+    })
+  })
+}=== ./static.js ===
+export const info = {
+  name: 'static',
+  description: 'Static middleware',
+  requires: ['express'],
+  npm: {
+    'serve-static': '^1.15.0'
+  },
+}
+
+export default mlm => ({
+  'config.static': {
+    is: 'string',
+    default: 'public'
+  },
+  'middleware.static': async (app) => {
+     const { default: serve_static } = await mlm.import('serve-static');
+     const { resolve } = await mlm.import('path');
+     const dir = mlm.config.static;
+     return serve_static(resolve(dir));
+  },
+})=== ./env.js ===
+export const info = {
+  name: 'env',
+  version: '1.0.0',
+  description: 'Environment',
+}
+
+export default mlm => ({
+  'define.DEV': () => process.env.NODE_ENV !== 'production',
+  'define.PROD': () => process.env.NODE_ENV === 'production',
+  'onBeforeLoad': () => {
+    process.env.NODE_ENV ||= 'development'
+  }
+})
+  === ./noxt-router.js ===
+export const info = {
+  name: 'noxt-router',
+  description: 'Sets up a Noxt Router',
+  requires: ['plugin'],
+  provides: ['#noxt-router'],
+  npm: {
+    'noxt-js-middleware': '^1.0.4'
+  },
+}
+
+export default mlm => ({
+  'config.views': {
+    normalize: p => [p].flat(),
+    is: ['string'],
+    default: ['views']
+  },
+  'middleware.noxt': async (app) => {
+    const { default: noxt } = await mlm.import('noxt-js-middleware');
+    const noxtRouter = await noxt({
+      context: mlm.noxt_context,
+      views: mlm.config.views,
+      hooks: mlm.services.noxt.noxt_hooks
+    })
+    return noxtRouter
+  },
+})

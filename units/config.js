@@ -100,9 +100,9 @@ export default mlm => ({
       return ret;
     }
     merge(userConfig) {
-      console.log('initial',config_defaults)
+//      console.log('initial',config_defaults,userConfig)
       Object.assign(config, this.process(userConfig));
-      console.log(userConfig,'final',config)
+//      console.log(userConfig,'final',config)
     }
     get_defs() {
       return {

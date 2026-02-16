@@ -4,10 +4,12 @@ export const info = {
   requires: [
     'express',
     'logger',
-    'static',
-    'noxt-router-dev',
     'reload',
+    'compression',
+    'static-dev',
     'fetch-cache-fs',
+    'bundler',
+    'noxt-router-dev',
     'fetch',
   ],
 }

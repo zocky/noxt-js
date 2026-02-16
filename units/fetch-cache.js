@@ -25,7 +25,7 @@ export default mlm => ({
     }
   },
 
-  'pageContext.fetch': (props, ctx) => globalFetch.bind(null, ctx),
+  'requestContext.fetch': (props, ctx) => globalFetch.bind(null, ctx),
   'serverContext.fetch': () => globalFetch,
 
   async onStart() {

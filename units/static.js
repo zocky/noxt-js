@@ -1,21 +1,25 @@
+import fs from "fs";
 export const info = {
   name: 'static',
   description: 'Static middleware',
   requires: ['express'],
-  npm: {
-    'serve-static': '^1.15.0'
-  },
 }
+
+import { resolve } from 'path';
 
 export default mlm => ({
   'config.static': {
-    is: 'string',
-    default: 'public'
+    is:   'string',
+    default: 'public',
+    
   },
-  'middleware.static': async (app) => {
-     const { default: serve_static } = await mlm.import('serve-static');
-     const { resolve } = await mlm.import('path');
-     const dir = mlm.config.static;
-     return serve_static(resolve(dir));
+
+  'middleware.static': async () => {
+    const dir = mlm.config.static;
+    if (!dir) return null;
+    const { static: serveStatic } = await mlm.import('express');
+    return serveStatic(resolve(dir), {
+      setHeaders: res => res.logGroup = 'static',
+    });
   },
 })

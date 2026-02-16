@@ -7,6 +7,13 @@ export const info = {
 export default mlm => {
 
   const utils = {};
+  utils.debounce = (fn, delay) => {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), delay);
+    }
+  }
   utils.eval = (fn, ...args) => typeof fn === 'function' ? fn(...args) : fn;
   utils.readOnly = (obj, { label = 'object' } = {}) => new Proxy(obj, {
     get: (t, k) => t[k],
@@ -20,7 +27,7 @@ export default mlm => {
   } = {}) => {
     const modes = {
       array: () => source => {
-        for (let value of source) {
+        for (let value of [].concat(source)) {
           if (filter && !filter(value)) continue;
           if (is) mlm.assert.is(is, value, label);
           if (map) value = map(value);
@@ -71,8 +78,23 @@ export default mlm => {
     mlm.assert(mode in modes, 'Unknown mode ' + mode);
     return modes[mode]();
   }
+  
   return ({
     'define.utils': () => utils.readOnly(utils, 'utils'),
+    'register.collect': async (confs,unit) => {
+      for (const key in confs) {
+        const { target, ...conf } = confs[key];
+        conf.label = key;
+        await mlm.inject({
+          [`register.${key}`]: utils.collector(target, conf),
+        }, unit);
+        if (unit[key]) {
+          mlm.inject({
+            [key]: unit[key]
+          }, unit);
+        }
+      }
+    },
     'register.utils': utils.collector(utils, { is: 'function', mode: 'object', map: (fn, key) => { mlm.log('utils', key); return fn; } }),
   })
 }
